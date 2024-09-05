@@ -12,9 +12,6 @@ numeros_colectivos = [
     111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121
 ]
 
-# Establecer el modo wide como predeterminado
-st.set_page_config(layout="wide")
-
 # Cargar configuración
 aws_access_key, aws_secret_key, region_name, bucket_name, valid_user, valid_password = cargar_configuracion()
 
@@ -71,27 +68,27 @@ def update_csv_in_s3(data, filename):
 
 # Formulario de Carga de Diésel
 def diesel_form(colectivos_list, diesel_data):
-    with st.expander("Registrar Carga de Diésel"):
-        coche = st.number_input("Número de Coche", min_value=0)
+    st.header("Registrar Carga de Diésel")
+    coche = st.number_input("Número de Coche", min_value=0)
+    
+    if coche not in colectivos_list:
+        st.info("Ingrese un número de coche válido")
+    else:
+        fecha = st.date_input("Fecha", value=datetime.now().date())
+        litros = st.number_input("Litros Cargados", min_value=0)
+        hora = datetime.now().strftime('%H:%M')
         
-        if coche not in colectivos_list:
-            st.error("Número de coche no válido. Por favor, ingresa un número de coche válido.")
-        else:
-            fecha = st.date_input("Fecha", value=datetime.now().date())
-            litros = st.number_input("Litros Cargados", min_value=0)
-            hora = datetime.now().strftime('%H:%M')
+        if st.button("Registrar Carga"):
+            # Crear una nueva entrada
+            new_entry = pd.DataFrame([{'idCarga': len(diesel_data) + 1, 'fecha': fecha, 'hora': hora, 'coche': coche, 'litros': litros, 'litrosServi': 5000 - litros}])
             
-            if st.button("Registrar Carga"):
-                # Crear una nueva entrada
-                new_entry = pd.DataFrame([{'idCarga': len(diesel_data) + 1, 'fecha': fecha, 'hora': hora, 'coche': coche, 'litros': litros, 'litrosServi': 5000 - litros}])
-                
-                # Agregar la nueva entrada al DataFrame
-                diesel_data = pd.concat([diesel_data, new_entry], ignore_index=True)
-                
-                # Actualizar el archivo CSV en S3
-                update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
-                
-                st.success("Carga de diésel registrada correctamente.")
+            # Agregar la nueva entrada al DataFrame
+            diesel_data = pd.concat([diesel_data, new_entry], ignore_index=True)
+            
+            # Actualizar el archivo CSV en S3
+            update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
+            
+            st.success("Carga de diésel registrada correctamente.")
 
 # Registro de Servicios
 def service_form(colectivos_list, diesel_data, service_data):
@@ -127,22 +124,22 @@ def service_form(colectivos_list, diesel_data, service_data):
 
 # Mostrar tabla de Cargas de Diésel
 def show_diesel_history(diesel_data):
-    with st.expander("Historial de Cargas"):
-        # Ordenar el DataFrame por la columna idCarga de mayor a menor
-        sorted_diesel_data = diesel_data.sort_values(by='idCarga', ascending=False)
-        
-        # Función para determinar el color del texto basado en los valores de litrosServi
-        def colorize_litros_servi(value):
-            if value <= 100:
-                return 'color: red'
-            elif value <= 500:
-                return 'color: yellow'
-            else:
-                return 'color: green'
-        
-        # Aplicar el estilo a la columna litrosServi sin mostrar la columna color
-        styled_df = sorted_diesel_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
-        st.dataframe(styled_df)
+    st.subheader("Historial de Cargas")
+    # Ordenar el DataFrame por la columna idCarga de mayor a menor
+    sorted_diesel_data = diesel_data.sort_values(by='idCarga', ascending=False)
+    
+    # Función para determinar el color del texto basado en los valores de litrosServi
+    def colorize_litros_servi(value):
+        if value <= 100:
+            return 'color: red'
+        elif value <= 500:
+            return 'color: yellow'
+        else:
+            return 'color: green'
+    
+    # Aplicar el estilo a la columna litrosServi sin mostrar la columna color
+    styled_df = sorted_diesel_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
+    st.dataframe(styled_df)
 
 # Mostrar tabla de Servicios
 def show_service_history(service_data):
