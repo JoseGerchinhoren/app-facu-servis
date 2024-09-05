@@ -4,7 +4,6 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime
 from config import cargar_configuracion
-import altair as alt
 
 # Lista de números de colectivos válidos
 numeros_colectivos = [
@@ -61,152 +60,104 @@ def login():
 
     return False
 
-# Funciones para los Indicadores
-
-# Indicador: Coche Próximo a Servicio
-def calculate_service_status(diesel_data):
-    # Agrupar los datos por coche y calcular los litros restantes
-    diesel_sums = diesel_data.groupby('coche')['litros'].sum().reset_index()
-    diesel_sums['litros_restantes'] = 5000 - diesel_sums['litros']
-    
-    # Crear una columna para el color basado en los litros restantes
-    def get_color(litros_restantes):
-        if litros_restantes > 500:
-            return 'green'
-        elif 0 < litros_restantes <= 500:
-            return 'yellow'
-        else:
-            return 'red'
-    
-    diesel_sums['color'] = diesel_sums['litros_restantes'].apply(get_color)
-    
-    # Crear el gráfico de columnas con Altair
-    chart_service_status = alt.Chart(diesel_sums).mark_bar().encode(
-        x=alt.X('coche:O', title='Número de Coche'),
-        y=alt.Y('litros_restantes:Q', title='Litros Restantes'),
-        color=alt.Color('color:N', scale=alt.Scale(domain=['green', 'yellow', 'red'], range=['green', 'yellow', 'red'])),
-        tooltip=['coche', 'litros_restantes']
-    ).properties(
-        title='Coches Próximos a Servicio',
-        width=300,  # Ajustar el ancho del gráfico
-        height=200  # Ajustar la altura del gráfico
-    )
-    
-    # Crear dos columnas
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.altair_chart(chart_service_status, use_container_width=True)
-
-    with col2:
-        # Mostrar gráfico de ranking de colectivos en la segunda columna
-        rank_colectivos_by_diesel(diesel_data)
-
-# Indicador: Colectivos con Más Carga de Diésel
-def rank_colectivos_by_diesel(diesel_data):
-    # Filtra datos para evitar números de coches no válidos
-    diesel_data = diesel_data[diesel_data['coche'].isin(numeros_colectivos)]
-    
-    last_30_days = diesel_data[diesel_data['fecha'] >= (datetime.now() - pd.Timedelta(days=30)).strftime('%Y-%m-%d')]
-    top_colectivos = last_30_days.groupby('coche')['litros'].sum().sort_values(ascending=False).reset_index()
-    
-    # Crear el gráfico de columnas con Altair
-    chart_ranking = alt.Chart(top_colectivos).mark_bar().encode(
-        x=alt.X('coche:O', title='Número de Coche'),
-        y=alt.Y('litros:Q', title='Litros Cargados'),
-        color=alt.value('blue'),
-        tooltip=['coche', 'litros']
-    ).properties(
-        title='Ranking de Colectivos por Carga de Diésel en los Últimos 30 Días',
-        width=300,  # Ajustar el ancho del gráfico
-        height=200  # Ajustar la altura del gráfico
-    )
-    
-    st.altair_chart(chart_ranking, use_container_width=True)
-
-# Indicador: Frecuencia de Servicios
-def calculate_service_frequency(service_data):
-    service_data['fecha'] = pd.to_datetime(service_data['fecha'])
-    frequency = service_data.groupby('coche').apply(lambda x: x['fecha'].diff().mean().days).reset_index(name='dias_promedio')
-    frequency = frequency.sort_values(by='dias_promedio')
-    st.bar_chart(frequency.set_index('coche')['dias_promedio'])
-
-# Formularios de Ingreso de Datos
-
-# Formulario de Carga de Diésel
-def diesel_form(colectivos_list):
-    with st.expander("Registrar Carga de Diésel"):
-        coche = st.selectbox("Número de Coche Carga", colectivos_list)
-        litros = st.number_input("Litros Cargados", min_value=0)
-        fecha_hora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        if st.button("Registrar Carga"):
-            new_entry = {'fecha': fecha_hora.split()[0], 'hora': fecha_hora.split()[1], 'coche': coche, 'litros': litros}
-            diesel_data = diesel_data.append(new_entry, ignore_index=True)
-            update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
-            st.success("Carga de diésel registrada correctamente.")
-
-# Registro de Servicios
-def service_form(colectivos_list, diesel_data, service_data):
-    with st.expander("Registrar Servicio"):
-        coche = st.selectbox("Número de Coche", colectivos_list, key='selectbox_coche')
-        last_service = service_data[service_data['coche'] == coche].max()
-        litros_cargados = diesel_data[diesel_data['coche'] == coche]['litros'].sum()
-
-        st.write(f"Último servicio: {last_service['fecha']} a las {last_service['hora']}")
-        st.write(f"Litros cargados desde el último servicio: {litros_cargados}")
-
-        service_done = st.checkbox("Servicio Realizado")
-
-        if service_done and st.button("Registrar Servicio"):
-            new_entry = {'fecha': datetime.now().strftime('%Y-%m-%d'), 'hora': datetime.now().strftime('%H:%M:%S'), 'coche': coche, 'litros': litros_cargados}
-            service_data = service_data.append(new_entry, ignore_index=True)
-            update_csv_in_s3(service_data, 'servicios_realizados.csv')
-            diesel_data = diesel_data[diesel_data['coche'] != coche]
-            update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
-            st.success("Servicio registrado correctamente.")
-
-# Funciones para actualizar datos en S3
-
+# Función para actualizar datos en S3
 def update_csv_in_s3(data, filename):
     csv_buffer = StringIO()
     data.to_csv(csv_buffer, index=False)
     s3.put_object(Bucket=bucket_name, Key=filename, Body=csv_buffer.getvalue())
 
-# Visualización de Tablas
+# Formulario de Carga de Diésel
+def diesel_form(colectivos_list, diesel_data):
+    st.subheader("Registrar Carga de Diésel")
+    coche = st.number_input("Número de Coche", min_value=0)
+    
+    if coche not in colectivos_list:
+        st.error("Número de coche no válido. Por favor, ingresa un número de coche válido.")
+    else:
+        fecha = st.date_input("Fecha", value=datetime.now().date())
+        litros = st.number_input("Litros Cargados", min_value=0)
+        hora = datetime.now().strftime('%H:%M')
+        
+        if st.button("Registrar Carga"):
+            # Crear una nueva entrada
+            new_entry = {'idCarga': len(diesel_data) + 1, 'fecha': fecha, 'hora': hora, 'coche': coche, 'litros': litros, 'litrosServi': 5000 - litros}
+            
+            # Agregar la nueva entrada al DataFrame            
+            diesel_data = pd.concat([diesel_data, new_entry], ignore_index=True)
 
+            # Actualizar el archivo CSV en S3
+            update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
+            
+            st.success("Carga de diésel registrada correctamente.")
+
+# Registro de Servicios
+def service_form(colectivos_list, diesel_data, service_data):
+    with st.expander("Registrar Servicio"):
+        coche = st.number_input("Número de Coche Servi", min_value=0)
+        if coche not in colectivos_list:
+            st.info("Ingrese un número de coche válido")
+        else:
+            fecha = st.date_input("Fecha del Servicio", value=datetime.now().date())
+            hora = datetime.now().strftime('%H:%M:%S')
+            
+            last_service = service_data[service_data['coche'] == coche].max()
+            if not last_service.empty:
+                last_service_date = datetime.strptime(last_service['fecha'], '%Y-%m-%d').strftime('%d/%m/%Y')
+                st.write(f"Último servicio: {last_service_date}")
+            else:
+                st.write("No hay registros de servicio previos para este coche.")
+            
+            litros_cargados = diesel_data[diesel_data['coche'] == coche]['litros'].sum()
+
+            service_done = st.checkbox("Servicio Realizado")
+
+            if service_done and st.button("Registrar Servicio"):
+                new_entry = {'idServis': len(service_data) + 1, 'fecha': fecha.strftime('%Y-%m-%d'), 'hora': hora, 'coche': coche, 'litrosTotales': litros_cargados, 'litrosUltimoServi': litros_cargados, 'fechaAnterior': last_service['fecha'] if not last_service.empty else 'N/A'}
+                service_data = pd.concat([service_data, new_entry], ignore_index=True)
+                update_csv_in_s3(service_data, 'servicios_realizados.csv')
+                
+                # Reiniciar litrosServi en diesel_data
+                diesel_data.loc[diesel_data['coche'] == coche, 'litrosServi'] = 5000
+                update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
+                
+                st.success("Servicio registrado correctamente.")
+
+# Mostrar tabla de Cargas de Diésel
 def show_diesel_history(diesel_data):
-    with st.expander("Historial de Cargas de Diésel"):
-        st.dataframe(diesel_data.sort_values(by=['fecha', 'hora'], ascending=[False, False]))
+    st.subheader("Historial de Cargas")
+    
+    # Función para determinar el color del texto basado en los valores de litrosServi
+    def colorize_litros_servi(value):
+        if value <= 100:
+            return 'color: red'
+        elif value <= 500:
+            return 'color: yellow'
+        else:
+            return 'color: green'
+    
+    # Aplicar el estilo a la columna litrosServi sin mostrar la columna color
+    styled_df = diesel_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
+    st.dataframe(styled_df)
 
+# Mostrar tabla de Servicios
 def show_service_history(service_data):
     with st.expander("Historial de Servicios"):
         st.dataframe(service_data.sort_values(by=['fecha', 'hora'], ascending=[False, False]))
 
 # Función Principal
-
 def main():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 
     if st.session_state["authenticated"] or login():
         st.title("Sistema de Gestión de Colectivos")
-        
-        # Indicadores
-        st.header("Indicadores")
-        calculate_service_status(diesel_data)
-        # rank_colectivos_by_diesel(diesel_data)
-        # calculate_service_frequency(service_data)
 
         # Ingreso de Datos
-        st.header("Registro de Datos")
         colectivos_list = [coche for coche in numeros_colectivos if coche in diesel_data['coche'].unique()]
-        diesel_form(colectivos_list)
-        service_form(colectivos_list, diesel_data, service_data)
-
-        # Tablas de Historial
-        st.header("Historial de Cargas y Servicios")
+        diesel_form(colectivos_list, diesel_data)
         show_diesel_history(diesel_data)
+        service_form(colectivos_list, diesel_data, service_data)
+    
         show_service_history(service_data)
     else:
         st.warning("Por favor, inicia sesión para continuar")
