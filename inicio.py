@@ -12,6 +12,9 @@ numeros_colectivos = [
     111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121
 ]
 
+# Establecer el modo wide como predeterminado
+st.set_page_config(layout="wide")
+
 # Cargar configuración
 aws_access_key, aws_secret_key, region_name, bucket_name, valid_user, valid_password = cargar_configuracion()
 
