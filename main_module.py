@@ -1,3 +1,5 @@
+# main_module.py
+
 import streamlit as st
 import boto3
 import pandas as pd
@@ -13,7 +15,7 @@ numeros_colectivos = [
 ]
 
 # Cargar configuración
-aws_access_key, aws_secret_key, region_name, bucket_name, valid_user, valid_password = cargar_configuracion()
+aws_access_key, aws_secret_key, region_name, bucket_name, _, _ = cargar_configuracion()
 
 # Configuración de AWS S3
 s3 = boto3.client(
@@ -36,29 +38,6 @@ def load_csv_from_s3(filename):
 # Cargar los datos
 diesel_data = load_csv_from_s3('cargas_diesel.csv')
 service_data = load_csv_from_s3('servicios_realizados.csv')
-
-# Funciones de login
-def login():
-    st.title("Login")
-
-    # Usa el usuario y la contraseña desde el archivo de configuración
-    global valid_user, valid_password
-
-    # Crea campos de entrada para el nombre de usuario y la contraseña
-    username = st.text_input("Usuario")
-    password = st.text_input("Contraseña", type="password")
-
-    # Verifica si el usuario y la contraseña son correctos
-    if st.button("Iniciar Sesión"):
-        if username == valid_user and password == valid_password:
-            st.session_state["authenticated"] = True
-            st.success("Login exitoso")
-            return True
-        else:
-            st.error("Usuario o contraseña incorrectos")
-            return False
-
-    return False
 
 # Función para actualizar datos en S3
 def update_csv_in_s3(data, filename):
@@ -148,21 +127,12 @@ def show_service_history(service_data):
 
 # Función Principal
 def main():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
+    st.title("Sistema de Gestión de Colectivos")
 
-    if st.session_state["authenticated"] or login():
-        st.title("Sistema de Gestión de Colectivos")
-
-        # Ingreso de Datos
-        colectivos_list = [coche for coche in numeros_colectivos if coche in diesel_data['coche'].unique()]
-        diesel_form(colectivos_list, diesel_data)
-        show_diesel_history(diesel_data)
-        service_form(colectivos_list, diesel_data, service_data)
+    # Ingreso de Datos
+    colectivos_list = [coche for coche in numeros_colectivos if coche in diesel_data['coche'].unique()]
+    diesel_form(colectivos_list, diesel_data)
+    show_diesel_history(diesel_data)
+    service_form(colectivos_list, diesel_data, service_data)
     
-        show_service_history(service_data)
-    else:
-        st.warning("Por favor, inicia sesión para continuar")
-
-if __name__ == "__main__":
-    main()
+    show_service_history(service_data)
