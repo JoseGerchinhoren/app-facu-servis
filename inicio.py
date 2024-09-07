@@ -27,7 +27,7 @@ def login(username, password):
             st.session_state.user_rol = "admin"  # Puedes personalizar el rol según sea necesario
             st.session_state.user_nombre_apellido = username
             st.session_state.id_usuario = 1  # ID ficticio, puedes asignar otro valor
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Credenciales incorrectas. Inténtalo de nuevo")
     
