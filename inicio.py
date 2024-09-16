@@ -7,6 +7,9 @@ from app import main as app
 # Cargar configuración
 aws_access_key, aws_secret_key, region_name, bucket_name, valid_user, valid_password = cargar_configuracion()
 
+# Establecer el modo wide como predeterminado
+st.set_page_config(layout="wide")
+
 # Conecta a S3
 s3 = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key, region_name=region_name)
 

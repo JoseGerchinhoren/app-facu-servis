@@ -4,11 +4,7 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime
 from config import cargar_configuracion
-from datetime import datetime
 import time
-
-# Establecer el modo wide como predeterminado
-st.set_page_config(layout="wide")
 
 # Lista de números de colectivos válidos
 numeros_colectivos = [
@@ -110,11 +106,26 @@ def diesel_form(numeros_colectivos, diesel_data):
     show_diesel_history(diesel_data)
 
 def show_custom_tables(diesel_data, col2, col3):
-    # Filtrar datos para Alderete y seleccionar solo las columnas coche y litrosServi
-    alderete_data = diesel_data[diesel_data['coche'].isin(numeros_alderete)][['coche', 'litrosServi']]
+    # Filtrar datos para Alderete y Tigre
+    alderete_data = diesel_data[diesel_data['coche'].isin(numeros_alderete)]
+    tigre_data = diesel_data[diesel_data['coche'].isin(numeros_tigre)]
 
-    # Filtrar datos para Tigre y seleccionar solo las columnas coche y litrosServi
-    tigre_data = diesel_data[diesel_data['coche'].isin(numeros_tigre)][['coche', 'litrosServi']]
+    # Agrupar por 'coche' y calcular los valores acumulativos necesarios
+    alderete_data = alderete_data.groupby('coche').agg({
+        'litrosServi': 'last'  # Obtener el último valor de litrosServi para cada coche
+    }).reset_index()
+
+    tigre_data = tigre_data.groupby('coche').agg({
+        'litrosServi': 'last'  # Obtener el último valor de litrosServi para cada coche
+    }).reset_index()
+
+    # Calcular la columna 'litros' como la diferencia entre 5000 y 'litrosServi'
+    alderete_data['litros'] = 5000 - alderete_data['litrosServi']
+    tigre_data['litros'] = 5000 - tigre_data['litrosServi']
+
+    # Reordenar las columnas
+    alderete_data = alderete_data[['coche', 'litros', 'litrosServi']]
+    tigre_data = tigre_data[['coche', 'litros', 'litrosServi']]
 
     # Función para determinar el color del texto basado en los valores de litrosServi
     def colorize_litros_servi(value):
@@ -129,7 +140,7 @@ def show_custom_tables(diesel_data, col2, col3):
     with col2:
         st.markdown('<h3 style="color: yellow;">Alderete</h3>', unsafe_allow_html=True)
         if not alderete_data.empty:
-            sorted_alderete_data = alderete_data.sort_values(by='litrosServi', ascending=True)
+            sorted_alderete_data = alderete_data.sort_values(by='coche', ascending=True)
             styled_alderete_df = sorted_alderete_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
             st.dataframe(styled_alderete_df, hide_index=True)
         else:
@@ -139,7 +150,7 @@ def show_custom_tables(diesel_data, col2, col3):
     with col3:
         st.markdown('<h3 style="color: red;">Tigre</h3>', unsafe_allow_html=True)
         if not tigre_data.empty:
-            sorted_tigre_data = tigre_data.sort_values(by='litrosServi', ascending=True)
+            sorted_tigre_data = tigre_data.sort_values(by='coche', ascending=True)
             styled_tigre_df = sorted_tigre_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
             st.dataframe(styled_tigre_df, hide_index=True)
         else:
@@ -221,7 +232,7 @@ def service_form(numeros_colectivos, diesel_data, service_data):
                     
                 # Recargar la aplicación
                 st.rerun()
-                
+
 # Mostrar tabla de Servicios
 def show_service_history(service_data):
     with st.expander("Historial de Servicios"):
@@ -229,15 +240,6 @@ def show_service_history(service_data):
         st.dataframe(service_data.sort_values(by=['fecha', 'hora'], ascending=[False, False]))
 
 # Función Principal
-# def main():
-#     # Ingreso de Datos
-#     colectivos_list = [coche for coche in numeros_colectivos]
-#     diesel_form(colectivos_list, diesel_data)
-#     service_form(colectivos_list, diesel_data, service_data)
-#     show_service_history(service_data)
-
-
-# Modificar la función principal para agregar las nuevas tablas
 def main():    
     # Ingreso de Datos
     colectivos_list = [coche for coche in numeros_colectivos]
