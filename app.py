@@ -31,7 +31,7 @@ s3 = boto3.client(
     region_name=region_name
 )
 
-# Funciones para cargar datos desde S3
+# Funciones para cargar y actualizar datos desde y en S3
 def load_csv_from_s3(filename):
     try:
         obj = s3.get_object(Bucket=bucket_name, Key=filename)
@@ -41,18 +41,13 @@ def load_csv_from_s3(filename):
         st.error(f"Error al cargar {filename}: {e}")
         return pd.DataFrame()
 
-# Cargar los datos
-diesel_data = load_csv_from_s3('cargas_diesel.csv')
-service_data = load_csv_from_s3('servicios_realizados.csv')
-
-# Función para actualizar datos en S3
 def update_csv_in_s3(data, filename):
     csv_buffer = StringIO()
     data.to_csv(csv_buffer, index=False)
     s3.put_object(Bucket=bucket_name, Key=filename, Body=csv_buffer.getvalue())
 
 # Formulario de Carga de Diésel
-def diesel_form(numeros_colectivos, diesel_data):
+def diesel_form(diesel_data):
     # Crear las tres columnas
     col1, col2, col3 = st.columns([2, 1, 1])  # La primera columna es el doble de ancha
 
@@ -69,9 +64,6 @@ def diesel_form(numeros_colectivos, diesel_data):
             hora = datetime.now().strftime('%H:%M')
 
             if st.button("Registrar Carga"):
-                # Recargar los datos actuales desde S3 para evitar inconsistencias
-                diesel_data = load_csv_from_s3('cargas_diesel.csv')
-
                 # Obtener el valor actual de litrosServi del coche
                 if not diesel_data[diesel_data['coche'] == coche].empty:
                     ultimo_servis = diesel_data[diesel_data['coche'] == coche].iloc[-1]['litrosServi']
@@ -102,7 +94,7 @@ def diesel_form(numeros_colectivos, diesel_data):
     # Mostrar las tablas de Alderete y Tigre en la tercera columna
     show_custom_tables(diesel_data, col2, col3)
 
-    # Mostrar historial actualizado (esto puede estar en cualquier lugar o ser removido)
+    # Mostrar historial actualizado
     show_diesel_history(diesel_data)
 
 def show_custom_tables(diesel_data, col2, col3):
@@ -110,7 +102,7 @@ def show_custom_tables(diesel_data, col2, col3):
     alderete_data = diesel_data[diesel_data['coche'].isin(numeros_alderete)]
     tigre_data = diesel_data[diesel_data['coche'].isin(numeros_tigre)]
 
-    # Agrupar por 'coche' y calcular los valores acumulativos necesarios
+    # Asegurarse de que estamos tomando el último valor de litrosServi para cada coche
     alderete_data = alderete_data.groupby('coche').agg({
         'litrosServi': 'last'  # Obtener el último valor de litrosServi para cada coche
     }).reset_index()
@@ -156,13 +148,8 @@ def show_custom_tables(diesel_data, col2, col3):
         else:
             st.write("No hay datos para Tigre.")
 
-# Mostrar tabla de Cargas de Diésel
 def show_diesel_history(diesel_data):
     with st.expander("Historial de Cargas"):
-
-        # Recargar los datos actualizados desde S3 para reflejar cualquier cambio
-        diesel_data = load_csv_from_s3('cargas_diesel.csv')
-
         # Ordenar el DataFrame por la columna idCarga de mayor a menor
         sorted_diesel_data = diesel_data.sort_values(by='idCarga', ascending=False)
         
@@ -177,10 +164,9 @@ def show_diesel_history(diesel_data):
         
         # Aplicar el estilo a la columna litrosServi sin mostrar la columna color
         styled_df = sorted_diesel_data.style.applymap(colorize_litros_servi, subset=['litrosServi'])
-        st.dataframe(styled_df)
+        st.dataframe(styled_df, hide_index=True)
 
-# Registro de Servicios
-def service_form(numeros_colectivos, diesel_data, service_data):
+def service_form(diesel_data, service_data):
     with st.expander("Registrar Servicio"):
         coche = st.number_input("Número de Coche Servi", min_value=0)
         
@@ -189,20 +175,26 @@ def service_form(numeros_colectivos, diesel_data, service_data):
         else:
             fecha = st.date_input("Fecha del Servicio", value=datetime.now().date())
             hora = datetime.now().strftime('%H:%M')
+
+            # Asegúrate de que 'fecha' es una fecha válida y en formato correcto
+            service_data['fecha'] = pd.to_datetime(service_data['fecha'], errors='coerce').dt.strftime('%Y-%m-%d')
             
-            # Obtener el último servicio del coche
-            last_service = service_data[service_data['coche'] == coche].max()
+            # Obtener el último servicio del coche basado en idServis
+            last_service = service_data[service_data['coche'] == coche]
             
-            if not last_service.empty and pd.notna(last_service['fecha']):
-                try:
-                    # Si la fecha es válida, conviértela al formato correcto
-                    last_service_date = datetime.strptime(str(last_service['fecha']), '%Y-%m-%d').strftime('%d/%m/%Y')
-                    st.write(f"Último servicio: {last_service_date}")
-                except ValueError:
-                    st.write("Formato de fecha no válido para el último servicio.")
+            # Inicializar variables por defecto
+            last_service_date = None
+            last_service_litros = 0
+            
+            if not last_service.empty:
+                last_service = last_service.sort_values(by='idServis', ascending=False).iloc[0]
+                last_service_date = last_service['fecha'] if pd.notna(last_service['fecha']) else 'No disponible'
+                last_service_litros = last_service['litrosTotales'] if pd.notna(last_service['litrosTotales']) else 0
+                st.write(f"Último servicio: {last_service_date}, Litros en el último servicio: {last_service_litros}")
             else:
                 st.write("No hay registros de servicio previos para este coche.")
             
+            # Sumar los litros totales del coche
             litros_cargados = diesel_data[diesel_data['coche'] == coche]['litros'].sum()
 
             service_done = st.checkbox("Servicio Realizado")
@@ -211,24 +203,24 @@ def service_form(numeros_colectivos, diesel_data, service_data):
                 # Crear nueva entrada de servicio
                 new_entry = pd.DataFrame([{
                     'idServis': len(service_data) + 1,
-                    'fecha': fecha.strftime('%Y-%m-%d'),
+                    'fecha': fecha.strftime('%Y-%m-%d'),  # Guardamos la fecha en el formato deseado
                     'hora': hora,
                     'coche': coche,
-                    'litrosTotales': litros_cargados,
-                    'litrosUltimoServi': litros_cargados,
-                    'fechaAnterior': last_service['fecha'] if not last_service.empty and pd.notna(last_service['fecha']) else 'N/A'
+                    'litrosTotales': litros_cargados,  # Guardamos los litros totales
+                    'litrosUltimoServi': last_service_litros,  # Usamos el valor de litros en el momento del último servicio
+                    'fechaAnterior': last_service_date
                 }])
                 service_data = pd.concat([service_data, new_entry], ignore_index=True)
                 update_csv_in_s3(service_data, 'servicios_realizados.csv')
                 
-                # Reiniciar litrosServi en diesel_data
+                # Actualizar litrosServi solo para el coche que se realizó el servicio
                 diesel_data.loc[diesel_data['coche'] == coche, 'litrosServi'] = 5000
                 update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
-                
-                st.success("Servicio registrado correctamente.")
 
-                # Esperar 1 segundo antes de recargar la aplicación
-                time.sleep(1)
+                st.success("Servicio registrado correctamente")
+
+                # Esperar para recargar la aplicación
+                time.sleep(3)
                     
                 # Recargar la aplicación
                 st.rerun()
@@ -236,15 +228,31 @@ def service_form(numeros_colectivos, diesel_data, service_data):
 # Mostrar tabla de Servicios
 def show_service_history(service_data):
     with st.expander("Historial de Servicios"):
-        service_data = load_csv_from_s3('servicios_realizados.csv')
-        st.dataframe(service_data.sort_values(by=['fecha', 'hora'], ascending=[False, False]))
+        # Convertir las columnas a enteros
+        service_data['litrosTotales'] = service_data['litrosTotales'].astype(int)
+        service_data['litrosUltimoServi'] = service_data['litrosUltimoServi'].astype(int)
+
+        # Ordenar la tabla por 'idServis'
+        sorted_service_data = service_data.sort_values(by='idServis', ascending=False)
+
+        # Aplicar formato a las columnas para mostrar sin comas
+        styled_df = sorted_service_data.style.format({
+            'litrosTotales': '{:.0f}',
+            'litrosUltimoServi': '{:.0f}'
+        })
+
+        # Mostrar la tabla con el estilo aplicado
+        st.dataframe(styled_df, hide_index=True)
 
 # Función Principal
-def main():    
-    # Ingreso de Datos
-    colectivos_list = [coche for coche in numeros_colectivos]
-    diesel_form(colectivos_list, diesel_data)
-    service_form(colectivos_list, diesel_data, service_data)
+def main():
+    # Cargar los datos
+    diesel_data = load_csv_from_s3('cargas_diesel.csv')
+    service_data = load_csv_from_s3('servicios_realizados.csv')
+
+    # Llamar a las funciones que gestionan el formulario y la visualización
+    diesel_form(diesel_data)
+    service_form(diesel_data, service_data)
     show_service_history(service_data)
 
 if __name__ == "__main__":
