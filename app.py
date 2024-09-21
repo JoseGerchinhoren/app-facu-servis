@@ -244,16 +244,53 @@ def show_service_history(service_data):
         # Mostrar la tabla con el estilo aplicado
         st.dataframe(styled_df, hide_index=True)
 
+def delete_record(diesel_data, service_data):
+    with st.expander("Eliminar Registros"):
+        col1, col2 = st.columns(2)
+
+        # Columna para eliminar registros de carga
+        with col1:
+            st.subheader("Eliminar Registro de Carga")
+            id_carga = st.number_input("Ingrese el ID de Carga", min_value=0, key="idCarga")
+            
+            if id_carga > 0:
+                carga_info = diesel_data[diesel_data['idCarga'] == id_carga]
+                if not carga_info.empty:
+                    st.write(carga_info)
+                    if st.button("Eliminar Carga", key="deleteCarga"):
+                        diesel_data = diesel_data[diesel_data['idCarga'] != id_carga]  # Eliminar la carga
+                        update_csv_in_s3(diesel_data, 'cargas_diesel.csv')
+                        st.success(f"Registro de carga con ID {id_carga} eliminado correctamente.")
+                else:
+                    st.warning("No se encontró un registro de carga con ese ID.")
+
+        # Columna para eliminar registros de servicio
+        with col2:
+            st.subheader("Eliminar Registro de Servicio")
+            id_servis = st.number_input("Ingrese el ID de Servicio", min_value=0, key="idServis")
+
+            if id_servis > 0:
+                servis_info = service_data[service_data['idServis'] == id_servis]
+                if not servis_info.empty:
+                    st.write(servis_info)
+                    if st.button("Eliminar Servicio", key="deleteServicio"):
+                        service_data = service_data[service_data['idServis'] != id_servis]  # Eliminar el servicio
+                        update_csv_in_s3(service_data, 'servicios_realizados.csv')
+                        st.success(f"Registro de servicio con ID {id_servis} eliminado correctamente.")
+                else:
+                    st.warning("No se encontró un registro de servicio con ese ID.")
+
 # Función Principal
 def main():
     # Cargar los datos
     diesel_data = load_csv_from_s3('cargas_diesel.csv')
     service_data = load_csv_from_s3('servicios_realizados.csv')
 
-    # Llamar a las funciones que gestionan el formulario y la visualización
+    # Llamar a las funciones que gestionan el formulario, la eliminación, y la visualización
     diesel_form(diesel_data)
     service_form(diesel_data, service_data)
     show_service_history(service_data)
+    delete_record(diesel_data, service_data)
 
 if __name__ == "__main__":
     main()
